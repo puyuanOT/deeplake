@@ -42,7 +42,7 @@ def attribute_based_filtering_python(
 
             filter = partial(dp_filter_python, filter=filter)
         print("16 workers")
-        view = view.filter(filter, num_workers=16, scheduler="multiprocessing")
+        view = view.filter(filter, num_workers=16, scheduler="processed")
 
     return view
 
