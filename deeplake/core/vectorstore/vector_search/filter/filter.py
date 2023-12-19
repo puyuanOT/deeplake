@@ -41,8 +41,7 @@ def attribute_based_filtering_python(
                     )  # We keep this check outside of the partial function below in order to not run it on every iteration in the Deep Lake filter
 
             filter = partial(dp_filter_python, filter=filter)
-        print("16 workers")
-        view = view.filter(filter, num_workers=16, scheduler="processed")
+        view = view.filter(filter, num_workers=32, scheduler="processed")
 
     return view
 
