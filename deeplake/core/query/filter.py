@@ -165,6 +165,7 @@ def filter_with_compute(
     compute = get_compute_provider(scheduler=scheduler, num_workers=num_workers)
 
     num_samples = len(dataset)
+    print(num_samples)
 
     if vds:
         vds.autoflush = False
