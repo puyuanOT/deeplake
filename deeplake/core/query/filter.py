@@ -165,7 +165,6 @@ def filter_with_compute(
     compute = get_compute_provider(scheduler=scheduler, num_workers=num_workers)
 
     num_samples = len(dataset)
-    print(num_samples)
 
     if vds:
         vds.autoflush = False
@@ -236,6 +235,7 @@ def filter_with_compute(
         if progressbar:
             result = compute.map_with_progress_bar(pg_filter_slice, idx, total_length=len(dataset))  # type: ignore
         else:
+            print(idx)
             result = compute.map(filter_slice, idx)  # type: ignore
         index_map = [k for x in result for k in x]  # unfold the result map
         if vds:
