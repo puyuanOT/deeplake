@@ -160,7 +160,6 @@ def filter_with_compute(
     vds: Optional[deeplake.Dataset] = None,
 ) -> List[int]:
     index_mapping_dict = getattr(dataset, "index_mapping_dict", None)
-    print(index_mapping_dict)
     initial_is_iteration = dataset.is_iteration
     dataset.is_iteration = True
     blocks = SampleStreaming(dataset, tensors=map_tensor_keys(dataset)).list_blocks()
@@ -196,7 +195,6 @@ def filter_with_compute(
             if index_mapping_dict is not None:
                 # If we are filtering an already filtered dataset
                 i = index_mapping_dict[i]
-                print(i)
             if filter_function(dataset[i]):
                 result.append(i)
                 if vds:
@@ -242,7 +240,6 @@ def filter_with_compute(
             result = compute.map_with_progress_bar(pg_filter_slice, idx, total_length=len(dataset))  # type: ignore
         else:
             result = compute.map(filter_slice, idx)  # type: ignore
-            print(result)
         index_map = [k for x in result for k in x]  # unfold the result map
         if vds:
             dataset._send_query_progress(
