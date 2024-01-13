@@ -73,6 +73,8 @@ def filter_dataset(
 
     tm = time()
 
+    print(getattr(dataset, "index_mapping_dict", None))
+
     query_text = _filter_function_to_query_text(filter_function)
     vds = (
         dataset._get_empty_vds(result_path, query=query_text, **(result_ds_args or {}))
