@@ -194,6 +194,7 @@ def filter_with_compute(
             if getattr(dataset, "index_mapping_dict", None):
                 # If we are filtering an already filtered dataset
                 i = dataset.index_mapping_dict[i]
+            print(i)
             if filter_function(dataset[i]):
                 result.append(i)
                 if vds:
