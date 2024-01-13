@@ -73,8 +73,6 @@ def filter_dataset(
 
     tm = time()
 
-    print(getattr(dataset, "index_mapping_dict", None))
-
     query_text = _filter_function_to_query_text(filter_function)
     vds = (
         dataset._get_empty_vds(result_path, query=query_text, **(result_ds_args or {}))
@@ -165,6 +163,8 @@ def filter_with_compute(
     dataset.is_iteration = True
     blocks = SampleStreaming(dataset, tensors=map_tensor_keys(dataset)).list_blocks()
     compute = get_compute_provider(scheduler=scheduler, num_workers=num_workers)
+
+    print(getattr(dataset, "index_mapping_dict", None))
 
     num_samples = len(dataset)
 
