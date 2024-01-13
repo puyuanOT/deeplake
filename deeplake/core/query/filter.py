@@ -191,6 +191,7 @@ def filter_with_compute(
     def filter_slice(indices: Sequence[int]):
         result = list()
         for i in indices:
+            print(getattr(dataset, "index_mapping_dict", None))
             if getattr(dataset, "index_mapping_dict", None):
                 # If we are filtering an already filtered dataset
                 i = dataset.index_mapping_dict[i]
@@ -239,7 +240,6 @@ def filter_with_compute(
         if progressbar:
             result = compute.map_with_progress_bar(pg_filter_slice, idx, total_length=len(dataset))  # type: ignore
         else:
-            print(getattr(dataset, "index_mapping_dict", None))
             result = compute.map(filter_slice, idx)  # type: ignore
             print(result)
         index_map = [k for x in result for k in x]  # unfold the result map
