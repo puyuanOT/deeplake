@@ -191,7 +191,9 @@ def filter_with_compute(
     def filter_slice(indices: Sequence[int]):
         result = list()
         for i in indices:
-            
+            if getattr(dataset, "index_mapping_dict", None):
+                # If we are filtering an already filtered dataset
+                i = dataset.index_mapping_dict[i]
             if filter_function(dataset[i]):
                 result.append(i)
                 if vds:
