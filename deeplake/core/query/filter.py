@@ -200,7 +200,6 @@ def filter_with_compute(
             elif vds:
                 vds_queue.put((i, False))
                 _event_callback()
-        print(result)
         return result
 
     def pg_filter_slice(pg_callback, indices: Sequence[int]):
@@ -238,6 +237,7 @@ def filter_with_compute(
             result = compute.map_with_progress_bar(pg_filter_slice, idx, total_length=len(dataset))  # type: ignore
         else:
             result = compute.map(filter_slice, idx)  # type: ignore
+            print(result)
         index_map = [k for x in result for k in x]  # unfold the result map
         if vds:
             dataset._send_query_progress(
