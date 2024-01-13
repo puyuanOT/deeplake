@@ -164,8 +164,6 @@ def filter_with_compute(
     blocks = SampleStreaming(dataset, tensors=map_tensor_keys(dataset)).list_blocks()
     compute = get_compute_provider(scheduler=scheduler, num_workers=num_workers)
 
-    print(getattr(dataset, "index_mapping_dict", None))
-
     num_samples = len(dataset)
 
     if vds:
@@ -241,6 +239,7 @@ def filter_with_compute(
         if progressbar:
             result = compute.map_with_progress_bar(pg_filter_slice, idx, total_length=len(dataset))  # type: ignore
         else:
+            print(getattr(dataset, "index_mapping_dict", None))
             result = compute.map(filter_slice, idx)  # type: ignore
             print(result)
         index_map = [k for x in result for k in x]  # unfold the result map
