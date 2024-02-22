@@ -71,5 +71,4 @@ def vector_search(
         for tensor in return_tensors:
             temp = utils.parse_tensor_return(view[tensor])
             return_data[tensor] = utils.parse_tensor_return(view[tensor])
-        print("Return time:", time.time() - start_time)
         return return_data
