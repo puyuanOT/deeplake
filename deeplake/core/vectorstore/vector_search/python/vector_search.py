@@ -4,7 +4,9 @@ from deeplake.core.vectorstore.vector_search import filter as filter_utils
 from deeplake.core.vectorstore.vector_search import utils
 from deeplake.core.dataset import Dataset as DeepLakeDataset
 from typing import Union, Dict
+import time
 
+EMBEDDINGS_CACHE = {}
 
 def vector_search(
     query,
@@ -34,15 +36,24 @@ def vector_search(
 
     view = filter_utils.attribute_based_filtering_python(dataset, filter)
 
+    # Use a unique key for caching. Here, it's simple but can be extended to be more sophisticated
+    cache_key = "no_filter" if filter is None else str(filter)
+
     return_data = {}
 
     # Only fetch embeddings and run the search algorithm if an embedding query is specified
     if query_emb is not None:
-        embeddings = dataset_utils.fetch_embeddings(
-            view=view,
-            embedding_tensor=embedding_tensor,
-        )
+        if cache_key in EMBEDDINGS_CACHE:
+            embeddings = EMBEDDINGS_CACHE[cache_key]
+        else:
+            embeddings = dataset_utils.fetch_embeddings(
+                view=view,
+                embedding_tensor=embedding_tensor,
+            )
+            # Cache the embeddings for future use
+            EMBEDDINGS_CACHE[cache_key] = embeddings
 
+        
         view, scores = vectorstore.python_search_algorithm(
             deeplake_dataset=view,
             query_embedding=query_emb,
@@ -56,6 +67,9 @@ def vector_search(
     if return_view:
         return view
     else:
+        start_time = time.time()
         for tensor in return_tensors:
+            temp = utils.parse_tensor_return(view[tensor])
             return_data[tensor] = utils.parse_tensor_return(view[tensor])
+        print("Return time:", time.time() - start_time)
         return return_data

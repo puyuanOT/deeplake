@@ -8,15 +8,13 @@ import deeplake
 from deeplake.core.dataset import Dataset
 from deeplake.core.vectorstore.dataset_handlers import get_dataset_handler
 from deeplake.core.vectorstore.deep_memory import DeepMemory
-from deeplake.core.vectorstore.dataset_handlers import get_dataset_handler
-from deeplake.core.vectorstore.deep_memory import DeepMemory
 from deeplake.constants import (
     DEFAULT_VECTORSTORE_TENSORS,
     MAX_BYTES_PER_MINUTE,
     TARGET_BYTE_SIZE,
 )
 from deeplake.util.bugout_reporter import feature_report_path
-from deeplake.util.exceptions import DeepMemoryWaitingListError
+from deeplake.util.exceptions import DeepMemoryAccessError
 
 
 logger = logging.getLogger(__name__)
@@ -34,7 +32,6 @@ class VectorStore:
         read_only: Optional[bool] = None,
         ingestion_batch_size: int = 1000,
         index_params: Optional[Dict[str, Union[int, str]]] = None,
-        num_workers: int = 0,
         exec_option: str = "auto",
         token: Optional[str] = None,
         overwrite: bool = False,
@@ -53,11 +50,13 @@ class VectorStore:
             >>> data = VectorStore(
             ...        path = "./my_vector_store",
             ... )
+
             >>> # Create a vector store in the Deep Lake Managed Tensor Database
             >>> data = VectorStore(
             ...        path = "hub://org_id/dataset_name",
             ...        runtime = {"tensor_db": True},
             ... )
+
             >>> # Create a vector store with custom tensors
             >>> data = VectorStore(
             ...        path = "./my_vector_store",
@@ -78,16 +77,18 @@ class VectorStore:
             tensor_params (List[Dict[str, dict]], optional): List of dictionaries that contains information about tensors that user wants to create. See ``create_tensor`` in Deep Lake API docs for more information. Defaults to ``DEFAULT_VECTORSTORE_TENSORS``.
             embedding_function (Optional[Any], optional): Function or class that converts the embeddable data into embeddings. Input to `embedding_function` is a list of data and output is a list of embeddings. Defaults to None.
             read_only (bool, optional):  Opens dataset in read-only mode if True. Defaults to False.
-            num_workers (int): Number of workers to use for parallel ingestion.
             ingestion_batch_size (int): Batch size to use for parallel ingestion.
-            index_params (Dict[str, Union[int, str]]): Dictionary containing information about vector index that will be created. Defaults to None, which will utilize ``DEFAULT_VECTORSTORE_INDEX_PARAMS`` from ``deeplake.constants``. The specified key-values override the default ones.
-                - threshold: The threshold for the dataset size above which an index will be created for the embedding tensor. When the threshold value is set to -1, index creation is turned off.
-                             Defaults to -1, which turns off the index.
-                - distance_metric: This key specifies the method of calculating the distance between vectors when creating the vector database (VDB) index. It can either be a string that corresponds to a member of the DistanceType enumeration, or the string value itself.
+            index_params (Dict[str, Union[int, str]]): Dictionary containing information about vector index that will be created. Defaults to ``None``, which will utilize ``DEFAULT_VECTORSTORE_INDEX_PARAMS`` from ``deeplake.constants``. The specified key-values override the default ones:
+
+                - 'threshold': The threshold for the dataset size above which an index will be created for the embedding tensor. When the threshold value is set to -1, index creation is turned off.
+                  Defaults to -1, which turns off the index.
+                - 'distance_metric': This key specifies the method of calculating the distance between vectors when creating the vector database (VDB) index. It can either be a string that corresponds to a member of the DistanceType enumeration, or the string value itself.
+
                     - If no value is provided, it defaults to "L2".
                     - "L2" corresponds to DistanceType.L2_NORM.
                     - "COS" corresponds to DistanceType.COSINE_SIMILARITY.
-                - additional_params: Additional parameters for fine-tuning the index.
+
+                - 'additional_params': Additional parameters for fine-tuning the index.
             exec_option (str): Default method for search execution. It could be either ``"auto"``, ``"python"``, ``"compute_engine"`` or ``"tensor_db"``. Defaults to ``"auto"``. If None, it's set to "auto".
                 - ``auto``- Selects the best execution method based on the storage location of the Vector Store. It is the default option.
                 - ``python`` - Pure-python implementation that runs on the client and can be used for data stored anywhere. WARNING: using this option with big datasets is discouraged because it can lead to memory issues.
@@ -102,8 +103,7 @@ class VectorStore:
                 - If 'ENV' is passed, credentials are fetched from the environment variables. This is also the case when creds is not passed for cloud datasets. For datasets connected to hub cloud, specifying 'ENV' will override the credentials fetched from Activeloop and use local ones.
             runtime (Dict, optional): Parameters for creating the Vector Store in Deep Lake's Managed Tensor Database. Not applicable when loading an existing Vector Store. To create a Vector Store in the Managed Tensor Database, set `runtime = {"tensor_db": True}`.
             branch (str): Branch name to use for the Vector Store. Defaults to "main".
-
-            **kwargs (Any): Additional keyword arguments.
+            **kwargs (dict): Additional keyword arguments.
 
         ..
             # noqa: DAR101
@@ -111,6 +111,9 @@ class VectorStore:
         Danger:
             Setting ``overwrite`` to ``True`` will delete all of your data if the Vector Store exists! Be very careful when setting this parameter.
         """
+
+        kwargs.pop("num_workers", None)
+
         self.dataset_handler = get_dataset_handler(
             path=path,
             dataset=dataset,
@@ -119,7 +122,7 @@ class VectorStore:
             read_only=read_only,
             ingestion_batch_size=ingestion_batch_size,
             index_params=index_params,
-            num_workers=num_workers,
+            num_workers=0,
             exec_option=exec_option,
             token=token,
             overwrite=overwrite,
@@ -302,13 +305,13 @@ class VectorStore:
         Raises:
             ValueError: When invalid parameters are specified.
             ValueError: when deep_memory is True. Deep Memory is only available for datasets stored in the Deep Lake Managed Database for paid accounts.
-            DeepMemoryWaitingListError: if user is not waitlisted to use deep_memory.
+            DeepMemoryAccessError: if user does not have access to deep_memory.
 
         Returns:
             Dict: Dictionary where keys are tensor names and values are the results of the search
         """
         if deep_memory and not self.deep_memory:
-            raise DeepMemoryWaitingListError()
+            raise DeepMemoryAccessError()
 
         return self.dataset_handler.search(
             embedding_data=embedding_data,

@@ -10,9 +10,12 @@ from functools import partial
 import pathlib
 import numpy as np
 from time import time, sleep
+
+from jwt import DecodeError
 from tqdm import tqdm
 
 import deeplake
+from deeplake.client.config import DEEPLAKE_AUTH_TOKEN
 from deeplake.core import index_maintenance
 from deeplake.core.index.index import IndexEntry
 from deeplake.core.link_creds import LinkCreds
@@ -36,7 +39,6 @@ from deeplake.util.iteration_warning import (
 from deeplake.util.tensor_db import parse_runtime_parameters
 from deeplake.api.info import load_info
 from deeplake.client.log import logger
-from deeplake.client.utils import read_token
 from deeplake.client.client import DeepLakeBackendClient
 from deeplake.constants import (
     FIRST_COMMIT_ID,
@@ -111,6 +113,7 @@ from deeplake.util.exceptions import (
     BadRequestException,
     SampleAppendError,
     SampleExtendError,
+    DatasetHandlerError,
 )
 from deeplake.util.keys import (
     dataset_exists,
@@ -164,7 +167,8 @@ def _load_tensor_metas(dataset):
         get_tensor_meta_key(key, dataset.version_state["commit_id"])
         for key in dataset.meta.tensors
     ]
-    dataset.storage.load_items_from_next_storage(meta_keys)
+    for _ in dataset.storage.get_items(meta_keys):
+        pass
     dataset._tensors()  # access all tensors to set chunk engines
 
 
@@ -288,9 +292,9 @@ class Dataset:
             else None
         )
         self._first_load_init()
-        self._initial_autoflush: List[
-            bool
-        ] = []  # This is a stack to support nested with contexts
+        self._initial_autoflush: List[bool] = (
+            []
+        )  # This is a stack to support nested with contexts
         self._indexing_history: List[int] = []
 
         if not self.read_only:
@@ -329,6 +333,16 @@ class Dataset:
                 if self._vc_info_updated:
                     self._flush_vc_info()
                 self.storage.flush()
+
+    @property
+    def username(self) -> str:
+        if not self.token:
+            return "public"
+
+        try:
+            return jwt.decode(self.token, options={"verify_signature": False})["id"]
+        except DecodeError:
+            return "public"
 
     @property
     def num_samples(self) -> int:
@@ -2039,6 +2053,16 @@ class Dataset:
     def read_only(self, value: bool):
         self._set_read_only(value, True)
 
+    @property
+    def allow_delete(self) -> bool:
+        """Returns True if dataset can be deleted from storage. Whether it can be deleted or not is stored in the database_meta.json and can be changed with allow_delete(boolean)"""
+        return self.meta.allow_delete
+
+    @allow_delete.setter
+    def allow_delete(self, value: bool):
+        self.meta.allow_delete = value
+        self.flush()
+
     def pytorch(
         self,
         transform: Optional[Callable] = None,
@@ -2586,11 +2610,17 @@ class Dataset:
 
         Raises:
             DatasetTooLargeToDelete: If the dataset is larger than 1 GB and ``large_ok`` is ``False``.
+            DatasetHandlerError: If the dataset is marked as delete_allowed=False.
         """
 
         deeplake_reporter.feature_report(
             feature_name="delete", parameters={"large_ok": large_ok}
         )
+
+        if not self.allow_delete:
+            raise DatasetHandlerError(
+                "The dataset is marked as delete_allowed=false. To delete this dataset, you must first run `allow_delete(True)` on the dataset."
+            )
 
         if hasattr(self, "_view_entry"):
             self._view_entry.delete()
@@ -2651,6 +2681,9 @@ class Dataset:
         if self.read_only:
             mode_str = f"read_only=True, "
 
+        if not self.allow_delete:
+            mode_str = f"allow_delete=False, "
+
         index_str = f"index={self.index}, "
         if self.index.is_trivial():
             index_str = ""
@@ -2679,7 +2712,7 @@ class Dataset:
     @property
     def token(self):
         """Get attached token of the dataset"""
-        return self._token or read_token(from_env=True)
+        return self._token or os.environ.get(DEEPLAKE_AUTH_TOKEN)
 
     @token.setter
     def token(self, new_token: str):
@@ -4121,16 +4154,18 @@ class Dataset:
             token=token,
             overwrite=overwrite,
             public=public,
-            unlink=[
-                t
-                for t in self.tensors
-                if (
-                    self.tensors[t].base_htype != "video"
-                    or deeplake.constants._UNLINK_VIDEOS
-                )
-            ]
-            if unlink
-            else False,
+            unlink=(
+                [
+                    t
+                    for t in self.tensors
+                    if (
+                        self.tensors[t].base_htype != "video"
+                        or deeplake.constants._UNLINK_VIDEOS
+                    )
+                ]
+                if unlink
+                else False
+            ),
             verbose=verbose,
         )
 
@@ -4632,28 +4667,11 @@ class Dataset:
     def _disable_padding(self):
         self._pad_tensors = False
 
-    def _pop(self, index: Optional[int] = None):
-        max_len = self.max_len
-        if max_len == 0:
-            raise IndexError("Can't pop from empty dataset.")
-
-        if index is None:
-            index = max_len - 1
-
-        if index < 0:
-            raise IndexError("Pop doesn't support negative indices.")
-        elif index >= max_len:
-            raise IndexError(
-                f"Index {index} is out of range. The longest tensor has {max_len} samples."
-            )
-
+    def _pop(self, index: List[int]):
+        """Removes elements at the given indices."""
         with self:
             for tensor in self.tensors.values():
-                if tensor.num_samples > index:
-                    tensor._check_for_pop(index)
-            for tensor in self.tensors.values():
-                if tensor.num_samples > index:
-                    tensor._pop(index)
+                tensor._pop(index)
 
     @invalid_view_op
     def pop(self, index: Optional[int] = None):
@@ -4665,29 +4683,42 @@ class Dataset:
             index (int, Optional): The index of the sample to be removed. If it is ``None``, the index becomes the ``length of the longest tensor - 1``.
 
         Raises:
+            ValueError: If duplicate indices are provided.
             IndexError: If the index is out of range.
         """
+        if index is None:
+            index = [self.max_len - 1]
+
+        if not isinstance(index, list):
+            index = [index]
+
+        if not index:
+            return
+
+        if len(set(index)) != len(index):
+            raise ValueError("Duplicate indices are not allowed.")
+
+        max_len = self.max_len
+        if max_len == 0:
+            raise IndexError("Can't pop from empty dataset.")
+
+        for idx in index:
+            if idx < 0:
+                raise IndexError("Pop doesn't support negative indices.")
+            elif idx >= max_len:
+                raise IndexError(
+                    f"Index {idx} is out of range. The longest tensor has {max_len} samples."
+                )
+
+        index = sorted(index, reverse=True)
+
         self._pop(index)
-        row_ids = [index if index is not None else self.max_len - 1]
+        row_ids = index[:]
+
         index_maintenance.index_operation_dataset(
             self,
             dml_type=_INDEX_OPERATION_MAPPING["REMOVE"],
             rowids=row_ids,
-        )
-
-    @invalid_view_op
-    def pop_multiple(self, index: List[int], progressbar=False):
-        rev_index = sorted(index, reverse=True)
-        if progressbar:
-            rev_index = tqdm(rev_index)
-        with self:
-            for i in rev_index:
-                self._pop(i)
-
-        index_maintenance.index_operation_dataset(
-            self,
-            dml_type=_INDEX_OPERATION_MAPPING["REMOVE"],
-            rowids=index,
         )
 
     @property

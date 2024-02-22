@@ -2,6 +2,7 @@ from typing import List, Tuple
 from deeplake.core.dataset import Dataset as DeepLakeDataset
 
 import numpy as np
+import time
 
 
 distance_metric_map = {
@@ -13,6 +14,18 @@ distance_metric_map = {
 }
 
 
+def batch_cosine_similarity(query, embeddings, batch_size=100000):
+    """Calculate cosine similarity in batches to reduce memory usage."""
+    num_embeddings = embeddings.shape[0]
+    cos_similarities = np.zeros(num_embeddings)
+    from tqdm import tqdm
+    for i in tqdm(range(0, num_embeddings, batch_size)):
+        batch = embeddings[i:i + batch_size]
+        cos_similarities[i:i + batch_size] = np.dot(batch, query.T) / (
+                np.linalg.norm(query) * np.linalg.norm(batch, axis=1))
+    return cos_similarities
+
+
 def search(
     deeplake_dataset: DeepLakeDataset,
     query_embedding: np.ndarray,
@@ -20,37 +33,24 @@ def search(
     distance_metric: str = "l2",
     k: int = 4,
 ) -> Tuple[DeepLakeDataset, List]:
-    """Naive vector search in python.
-    args:
-        deeplake_dataset: DeepLakeDataset,
-        query_embedding: np.ndarray
-        embeddings: np.ndarray
-        k (int): number of nearest neighbors
-        return_tensors (List[str]): List of tensors to return. Defaults to None. If None, all tensors are returned.
-        distance_metric: distance function 'L2' for Euclidean, 'L1' for Nuclear, 'Max'
-            l-infinity distnace, 'cos' for cosine similarity, 'dot' for dot product
-    returns:
-        Tuple(DeepLakeDataset, List): A tuple containing the dataset view and scores for the embedding search.
-    """
-
     if embeddings.shape[0] == 0:
         return deeplake_dataset[0:0], []
 
+    if len(query_embedding.shape) > 1:
+        query_embedding = query_embedding[0]
+
+    # Use the appropriate distance calculation
+    if distance_metric == "cos":
+        distances = batch_cosine_similarity(query_embedding, embeddings)
     else:
-        if len(query_embedding.shape) > 1:
-            query_embedding = query_embedding[0]
-
-        # Calculate the distance between the query_vector and all data_vectors
         distances = distance_metric_map[distance_metric](query_embedding, embeddings)
-        nearest_indices = np.argsort(distances)
+    
+    if distance_metric in ["cos"]:
+        nearest_indices = np.argsort(distances)[::-1][:k]
+    else:
+        nearest_indices = np.argsort(distances)[:k]
 
-        nearest_indices = (
-            nearest_indices[::-1][:k]
-            if distance_metric in ["cos"]
-            else nearest_indices[:k]
-        )
-
-        return (
-            deeplake_dataset[nearest_indices.tolist()],
-            distances[nearest_indices].tolist(),
-        )
+    return (
+        deeplake_dataset[nearest_indices.tolist()],
+        distances[nearest_indices].tolist(),
+    )

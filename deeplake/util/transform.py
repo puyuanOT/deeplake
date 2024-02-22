@@ -37,15 +37,11 @@ from deeplake.util.exceptions import (
     SampleAppendError,
 )
 
+import traceback
 import posixpath
 import time
 
 import numpy as np
-
-try:
-    import pandas as pd  # type: ignore
-except ImportError:
-    pd = None
 
 
 def transform_sample(
@@ -165,6 +161,11 @@ def _handle_transform_error(
     end_input_idx,
     ignore_errors,
 ):
+    try:
+        import pandas as pd  # type: ignore
+    except ImportError:
+        pd = None
+
     start_input_idx = transform_dataset.start_input_idx
     skipped_samples = 0
     for i in range(start_input_idx, end_input_idx + 1):
@@ -200,6 +201,11 @@ def _transform_and_append_data_slice(
     ignore_errors,
 ):
     """Appends a data slice. Returns ``True`` if any samples were appended and ``False`` otherwise."""
+    try:
+        import pandas as pd  # type: ignore
+    except ImportError:
+        pd = None
+
     n = len(data_slice)
     skipped_samples = 0
     skipped_samples_in_current_batch = 0
@@ -343,7 +349,7 @@ def store_data_slice_with_pbar(pg_callback, transform_input: Tuple) -> Dict:
     if isinstance(data_slice, deeplake.Dataset):
         data_slice = add_cache_to_dataset_slice(data_slice, tensors)
 
-    rel_tensors = [relpath(tensor, group_index) for tensor in visible_tensors]
+    rel_tensors = [posixpath.relpath(tensor, group_index) for tensor in visible_tensors]
 
     transform_dataset = TransformDataset(
         rel_tensors,
@@ -388,7 +394,18 @@ def store_data_slice_with_pbar(pg_callback, transform_input: Tuple) -> Dict:
         # retrieve relevant objects from memory
         meta = _retrieve_memory_objects(all_chunk_engines)
         meta.update(ret)
-        meta["error"] = err
+
+        err_dict: Optional[Dict[str, Any]] = None
+        if err:
+            err_dict = {}
+            err_dict["raise"] = err
+            cause = err.__cause__
+            if cause:
+                cause_traceback = "".join(
+                    traceback.format_exception(cause.__class__, cause, cause.__traceback__)  # type: ignore
+                )
+                err_dict["traceback"] = cause_traceback
+        meta["error"] = err_dict
         return meta
 
 
@@ -426,9 +443,11 @@ def create_worker_chunk_engines(
                 tiling_threshold = storage_chunk_engine.tiling_threshold
                 new_tensor_meta = TensorMeta(
                     htype=existing_meta.htype,
-                    dtype=np.dtype(existing_meta.typestr)
-                    if existing_meta.typestr
-                    else existing_meta.dtype,
+                    dtype=(
+                        np.dtype(existing_meta.typestr)
+                        if existing_meta.typestr
+                        else existing_meta.dtype
+                    ),
                     sample_compression=existing_meta.sample_compression,
                     chunk_compression=existing_meta.chunk_compression,
                     max_chunk_size=chunk_size,

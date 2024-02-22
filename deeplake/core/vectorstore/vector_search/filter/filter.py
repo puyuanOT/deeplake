@@ -28,7 +28,7 @@ def dp_filter_python(x: dict, filter: Dict) -> bool:
 
 
 def attribute_based_filtering_python(
-    view, filter: Optional[Union[Dict, Callable]] = None, scheduler="serial", num_workers=0,
+    view, filter: Optional[Union[Dict, Callable]] = None
 ):
     if len(view) == 0:
         raise ValueError("specified dataset is empty")
@@ -41,7 +41,8 @@ def attribute_based_filtering_python(
                     )  # We keep this check outside of the partial function below in order to not run it on every iteration in the Deep Lake filter
 
             filter = partial(dp_filter_python, filter=filter)
-        view = view.filter(filter, num_workers=num_workers, scheduler=scheduler, progressbar=False)
+
+        view = view.filter(filter)
 
     return view
 

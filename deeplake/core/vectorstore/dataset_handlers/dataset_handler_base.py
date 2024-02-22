@@ -1,4 +1,5 @@
 import logging
+import os
 import pathlib
 from abc import abstractmethod, ABC
 from typing import Optional, Any, List, Dict, Union, Callable
@@ -6,9 +7,9 @@ import jwt
 
 import numpy as np
 
+from deeplake.client.config import DEEPLAKE_AUTH_TOKEN
 from deeplake.util.path import convert_pathlib_to_string_if_needed
 from deeplake.core.dataset import Dataset
-from deeplake.client.utils import read_token
 from deeplake.core.vectorstore import utils
 from deeplake.util.bugout_reporter import (
     feature_report_path,
@@ -71,9 +72,9 @@ class DHBase(ABC):
             self.bugout_reporting_path,
             "vs.initialize",
             {
-                "tensor_params": "default"
-                if tensor_params is not None
-                else tensor_params,
+                "tensor_params": (
+                    "default" if tensor_params is not None else tensor_params
+                ),
                 "embedding_function": True if embedding_function is not None else False,
                 "num_workers": num_workers,
                 "overwrite": overwrite,
@@ -99,7 +100,7 @@ class DHBase(ABC):
 
     @property
     def token(self):
-        return self._token or read_token(from_env=True)
+        return self._token or os.environ.get(DEEPLAKE_AUTH_TOKEN)
 
     @property
     def exec_option(self) -> str:

@@ -1,7 +1,6 @@
 import jwt
 
 from deeplake.util.exceptions import DatasetHandlerError, UserNotLoggedInException
-from deeplake.cli.auth import login, logout
 from click.testing import CliRunner
 import pytest
 import deeplake
@@ -62,26 +61,6 @@ def test_dataset_empty_load():
         assert len(ds_overwrite_empty.tensors) == 0
 
 
-@pytest.mark.slow
-def test_update_privacy(hub_cloud_ds):
-    assert not hub_cloud_ds.public
-    hub_cloud_ds.make_public()
-    assert hub_cloud_ds.public
-    hub_cloud_ds.make_private()
-    assert not hub_cloud_ds.public
-
-    runner = CliRunner()
-    runner.invoke(logout)
-    with pytest.raises(UserNotLoggedInException):
-        deeplake.dataset(hub_cloud_ds.path)
-
-    with pytest.raises(UserNotLoggedInException):
-        deeplake.load(hub_cloud_ds.path)
-
-    with pytest.raises(UserNotLoggedInException):
-        deeplake.empty(hub_cloud_ds.path)
-
-
 def test_persistence_bug(local_ds_generator):
     for tensor_name in ["abc", "abcd/defg"]:
         ds = local_ds_generator()
@@ -97,14 +76,21 @@ def test_persistence_bug(local_ds_generator):
         np.testing.assert_array_equal(ds[tensor_name].numpy(), np.array([[1], [2]]))
 
 
-def test_dataset_token(local_ds_generator, hub_cloud_dev_credentials):
-    username, password = hub_cloud_dev_credentials
-    CliRunner().invoke(login, f"-u {username} -p {password}")
+def test_allow_delete(local_ds_generator, local_path):
     ds = local_ds_generator()
-    token = ds.token
-    token_username = jwt.decode(token, options={"verify_signature": False})["id"]
-    assert token_username == username
+    assert ds.allow_delete is True
 
-    CliRunner().invoke(logout)
-    ds = local_ds_generator()
-    assert ds.token is None
+    ds.allow_delete = False
+    assert ds.allow_delete is False
+
+    ds2 = deeplake.load(ds.path)
+    assert ds2.allow_delete is False
+
+    with pytest.raises(DatasetHandlerError):
+        deeplake.empty(ds.path, overwrite=True)
+        deeplake.deepcopy(src=ds.path, dest=local_path, overwrite=True)
+        ds.delete()
+
+    ds.allow_delete = True
+    assert ds.allow_delete is True
+    ds.delete()

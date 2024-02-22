@@ -1,3 +1,5 @@
+import os
+
 import deeplake
 import requests  # type: ignore
 import textwrap
@@ -16,9 +18,6 @@ from deeplake.util.exceptions import (
 )
 from deeplake.client.utils import (
     check_response_status,
-    write_token,
-    read_token,
-    remove_token,
     JobResponseStatusSchema,
 )
 from deeplake.client.config import (
@@ -42,6 +41,7 @@ from deeplake.client.config import (
     CONNECT_DATASET_SUFFIX,
     REMOTE_QUERY_SUFFIX,
     ORG_PERMISSION_SUFFIX,
+    DEEPLAKE_AUTH_TOKEN,
 )
 from deeplake.client.log import logger
 import jwt  # should add it to requirements.txt
@@ -61,35 +61,28 @@ class DeepLakeBackendClient:
         )
 
         self.version = deeplake.__version__
-        self._token_from_env = False
         self.auth_header = None
-        self.token = token or self.get_token()
+        self.token = (
+            token
+            or os.environ.get(DEEPLAKE_AUTH_TOKEN)
+            or "PUBLIC_TOKEN_" + ("_" * 150)
+        )
         self.auth_header = f"Bearer {self.token}"
 
         # remove public token, otherwise env var will be ignored
         # we can remove this after a while
         orgs = self.get_user_organizations()
         if orgs == ["public"]:
-            remove_token()
             self.token = token or self.get_token()
             self.auth_header = f"Bearer {self.token}"
-        if self._token_from_env:
+        else:
             username = self.get_user_profile()["name"]
             if get_reporting_config().get("username") != username:
                 save_reporting_config(True, username=username)
                 set_username(username)
 
     def get_token(self):
-        """Returns a token"""
-        self._token_from_env = False
-        token = read_token(from_env=False)
-        if token is None:
-            token = read_token(from_env=True)
-            if token is None:
-                token = self.request_auth_token(username="public", password="")
-            else:
-                self._token_from_env = True
-        return token
+        return self.token
 
     def request(
         self,
@@ -232,11 +225,11 @@ class DeepLakeBackendClient:
             tuple: containing full url to dataset, credentials, mode and expiration time respectively.
 
         Raises:
-            UserNotLoggedInException: When user is not logged in
+            UserNotLoggedInException: When user is not authenticated
             InvalidTokenException: If the specified token is invalid
             TokenPermissionError: when there are permission or other errors related to token
             AgreementNotAcceptedError: when user has not accepted the agreement
-            NotLoggedInAgreementError: when user is not logged in and dataset has agreement which needs to be signed
+            NotLoggedInAgreementError: when user is not authenticated and dataset has agreement which needs to be signed
         """
         import json
 
@@ -403,7 +396,7 @@ class DeepLakeBackendClient:
         )
 
     def get_user_organizations(self):
-        """Get list of user organizations from the backend. If user is not logged in, returns ['public'].
+        """Get list of user organizations from the backend. If user is not authenticated, returns ['public'].
 
         Returns:
             list: user/organization names

@@ -3,14 +3,6 @@ from io import BytesIO, StringIO
 
 import numpy as np
 
-try:
-    import pandas as pd  # type: ignore
-
-    _PANDAS_INSTALLED = True
-except ImportError:
-    pd = None
-    _PANDAS_INSTALLED = False
-
 from deeplake.util.exceptions import DynamicTensorNumpyError  # type: ignore
 from deeplake.util.object_3d import ply_reader_base
 
@@ -49,9 +41,9 @@ class PlyASCIIWithNormalsReader(ply_reader_base.PlyReaderBase):
         self.meta_data["dimensions_names_to_dtype"][line[2].decode()] = ply_dtypes[
             line[1]
         ]
-        self.meta_data["element_name_to_property_dtypes"][name][
-            line[2].decode()
-        ] = ply_dtypes[line[1]]
+        self.meta_data["element_name_to_property_dtypes"][name][line[2].decode()] = (
+            ply_dtypes[line[1]]
+        )
 
         dimensions_names.append(line[2].decode())
 
@@ -59,10 +51,15 @@ class PlyASCIIWithNormalsReader(ply_reader_base.PlyReaderBase):
         return has_texture
 
     def _parse_data(self, ext, fmt, meta_data, stream_bytes, dtype=np.float32):
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError:
+            pd = None
+
         stream_bytes = str(stream_bytes, "utf-8")
         stream_bytes = StringIO(stream_bytes)
         bottom = 0 if self.mesh_size is None else self.mesh_size
-        if not _PANDAS_INSTALLED:
+        if pd is None:
             raise ModuleNotFoundError(
                 "pandas is not installed. Run `pip install pandas`."
             )
@@ -137,20 +134,29 @@ class PlyASCIIReader(ply_reader_base.PlyReaderBase):
             meta_data["dimensions_names_to_dtype"][line[2].decode()] = ply_dtypes[
                 line[1]
             ]
-            meta_data["element_name_to_property_dtypes"][name][
-                line[2].decode()
-            ] = ply_dtypes[line[1]]
+            meta_data["element_name_to_property_dtypes"][name][line[2].decode()] = (
+                ply_dtypes[line[1]]
+            )
         dimensions_names.append(line[2].decode())
         meta_data["dimensions_names"] += dimensions_names
         return has_texture
 
     def _parse_data(self, ext, fmt, meta_data, stream_bytes, dtype=np.float32):
+        try:
+            import pandas as pd  # type: ignore
+        except ImportError:
+            pd = None
+
         stream_bytes = str(stream_bytes, "utf-8")
         stream_bytes = StringIO(stream_bytes)
         bottom = 0 if self.mesh_size is None else self.mesh_size
         vertex_names = list(
             meta_data["element_name_to_property_dtypes"]["vertex"].keys()
         )
+        if pd is None:
+            raise ModuleNotFoundError(
+                "pandas is not installed. Run `pip install pandas`."
+            )
         points = pd.read_csv(
             stream_bytes,
             sep=" ",

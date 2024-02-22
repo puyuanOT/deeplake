@@ -7,10 +7,8 @@ from typing import Optional, List, Dict, Tuple
 
 import deeplake
 from deeplake.constants import MB, DEFAULT_VECTORSTORE_INDEX_PARAMS, TARGET_BYTE_SIZE
-from deeplake.enterprise.util import raise_indra_installation_error
 from deeplake.util.exceptions import TensorDoesNotExistError
 from deeplake.util.warnings import always_warn
-from deeplake.client.utils import read_token
 from deeplake.core.dataset import DeepLakeCloudDataset, Dataset
 from deeplake.core.vectorstore.embeddings.embedder import DeepLakeEmbedder
 from deeplake.client.client import DeepLakeBackendClient
@@ -140,6 +138,8 @@ def parse_return_tensors(dataset, return_tensors, embedding_tensor, return_view)
 
 def check_indra_installation(exec_option, indra_installed):
     if exec_option == "compute_engine" and not indra_installed:
+        from deeplake.enterprise.util import raise_indra_installation_error
+
         raise raise_indra_installation_error(
             indra_import_error=False
         )  # pragma: no cover
@@ -171,10 +171,6 @@ def create_tensor_to_length_str(tensors):
             f"length of {tensor_name} = {len(tensors[f'{tensor_name}'])}\n"
         )
     return tensor_lengths
-
-
-random.seed(0)
-np.random.seed(0)
 
 
 def generate_random_string(length):

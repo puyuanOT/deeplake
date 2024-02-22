@@ -1,3 +1,4 @@
+import pickle
 import uuid
 import os
 import sys
@@ -33,9 +34,6 @@ from deeplake.core.index_maintenance import (
     METRIC_TO_INDEX_METRIC,
 )
 from deeplake.core.vectorstore.vector_search import dataset as dataset_utils
-from deeplake.cli.auth import login, logout
-from click.testing import CliRunner
-
 
 EMBEDDING_DIM = 100
 NUMBER_OF_DATA = 10
@@ -2734,69 +2732,6 @@ def test_exec_option_with_auth(local_path, hub_cloud_path, hub_cloud_dev_token):
 
 
 @requires_libdeeplake
-def test_exec_option_cli(
-    local_path,
-    hub_cloud_path,
-    hub_cloud_dev_token,
-    hub_cloud_dev_credentials,
-):
-    runner = CliRunner()
-    username, password = hub_cloud_dev_credentials
-    # Testing exec_option with cli login and logout commands are executed
-    runner.invoke(login, f"-u {username} -p {password}")
-
-    # local dataset and logged in with cli
-    db = VectorStore(
-        path=local_path,
-    )
-    assert db.dataset_handler.exec_option == "compute_engine"
-
-    # hub cloud dataset and logged in with cli
-    db = VectorStore(
-        path=hub_cloud_path,
-    )
-    assert db.dataset_handler.exec_option == "compute_engine"
-
-    # hub cloud dataset and logged in with cli
-    db = VectorStore(
-        path="mem://abc",
-    )
-    assert db.dataset_handler.exec_option == "python"
-
-    # logging out with cli
-    runner.invoke(logout)
-
-    # local dataset and logged out with cli
-    db = VectorStore(
-        path=local_path,
-    )
-    assert db.dataset_handler.exec_option == "python"
-
-    # Check whether after logging out exec_option changes to python
-    # logging in with cli token
-    runner.invoke(login, f"-t {hub_cloud_dev_token}")
-    db = VectorStore(
-        path=local_path,
-    )
-    assert db.dataset_handler.exec_option == "compute_engine"
-    # logging out with cli
-    runner.invoke(logout)
-    assert db.dataset_handler.exec_option == "python"
-
-    # Check whether after logging out when token specified exec_option doesn't change
-    # logging in with cli token
-    runner.invoke(login, f"-t {hub_cloud_dev_token}")
-    db = VectorStore(
-        path=local_path,
-        token=hub_cloud_dev_token,
-    )
-    assert db.dataset_handler.exec_option == "compute_engine"
-    # logging out with cli
-    runner.invoke(logout)
-    assert db.dataset_handler.exec_option == "compute_engine"
-
-
-@requires_libdeeplake
 @pytest.mark.parametrize(
     "path, creds",
     [
@@ -2990,3 +2925,24 @@ def test_returning_tql_for_exec_option_compute_engine_should_return_correct_tql(
         "(select *, COSINE_SIMILARITY(embedding, ARRAY[0.0, 0.0, 0.0]) as score "
         "order by COSINE_SIMILARITY(embedding, ARRAY[0.0, 0.0, 0.0]) DESC limit 4)"
     )
+
+
+def test_delete_all_bug(local_path):
+    vs = VectorStore("local_path", overwrite=True)
+    ids = vs.add(
+        text=["a", "b"],
+        metadata=[{}, {}],
+        embedding=[[1, 2, 3], [2, 3, 4]],
+        return_ids=True,
+    )
+
+    ds = vs.dataset
+    pickled = pickle.dumps(ds)
+    unpickled = pickle.loads(pickled)
+
+    vs = VectorStore(dataset=unpickled)
+
+    assert len(vs) == 2
+    vs.delete(delete_all=True)
+
+    assert len(vs) == 0

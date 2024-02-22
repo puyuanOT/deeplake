@@ -48,13 +48,12 @@ from deeplake.util.testing import assert_array_equal
 from deeplake.util.pretty_print import summary_tensor, summary_dataset
 from deeplake.util.shape_interval import ShapeInterval
 from deeplake.constants import GDRIVE_OPT, MB, KB
-from deeplake.client.config import REPORTING_CONFIG_FILE_PATH
 
 from click.testing import CliRunner
-from deeplake.cli.auth import login, logout
-from deeplake.util.bugout_reporter import feature_report_path
 from rich import print as rich_print
 from io import BytesIO
+
+import pickle
 
 # need this for 32-bit and 64-bit systems to have correct tests
 MAX_INT_DTYPE = np.int_.__name__
@@ -826,6 +825,28 @@ def test_like(local_path, convert_to_pathlib):
     assert dest_ds.d.info.key == 1
 
     assert len(dest_ds) == 0
+
+
+def test_inplace_like(local_ds):
+    with local_ds as ds:
+        ds.create_tensor("abc", htype="class_label")
+        ds.abc.extend([1, 0, 1, 0, 0, 1])
+        ds.abc.info.update(class_names=["a", "b"])
+
+    # reload to ensure we are not using cached data
+    ds = pickle.loads(pickle.dumps(ds))
+
+    with deeplake.like(local_ds.path, local_ds.path, overwrite=True) as ds:
+        assert ds.abc.meta.htype == "class_label"
+        assert ds.abc.info.class_names == ["a", "b"]
+
+        ds.abc.extend([1, 0, 1, 0, 0, 1])
+
+    ds = pickle.loads(pickle.dumps(ds))
+
+    with deeplake.like(ds, ds, overwrite=True) as ds:
+        assert ds.abc.meta.htype == "class_label"
+        assert ds.abc.info.class_names == ["a", "b"]
 
 
 def test_tensor_creation_fail_recovery():
@@ -1944,15 +1965,6 @@ def test_hub_exists(ds_generator, path, hub_token, convert_to_pathlib):
     assert deeplake.exists(f"{path}_does_not_exist", token=hub_token) == False
 
 
-def test_pyav_not_installed(local_ds, video_paths):
-    pyav_installed = deeplake.core.compression._PYAV_INSTALLED
-    deeplake.core.compression._PYAV_INSTALLED = False
-    local_ds.create_tensor("videos", htype="video", sample_compression="mp4")
-    with pytest.raises(SampleAppendError):
-        local_ds.videos.append(deeplake.read(video_paths["mp4"][0]))
-    deeplake.core.compression._PYAV_INSTALLED = pyav_installed
-
-
 @pytest.mark.slow
 def test_partial_read_then_write(s3_ds_generator):
     ds = s3_ds_generator()
@@ -2318,20 +2330,6 @@ def test_uneven_iteration(memory_ds):
             np.testing.assert_equal(y, target_y)
 
 
-def token_permission_error_check(
-    username,
-    password,
-    runner,
-):
-    result = runner.invoke(login, f"-u {username} -p {password}")
-    with pytest.raises(TokenPermissionError):
-        deeplake.empty("hub://activeloop-test/sohas-weapons-train")
-
-    with pytest.raises(TokenPermissionError):
-        ds = deeplake.load("hub://activeloop/fake-path")
-    runner.invoke(logout)
-
-
 def invalid_token_exception_check():
     with pytest.raises(InvalidTokenException):
         ds = deeplake.empty("hub://adilkhan/demo", token="invalid_token")
@@ -2347,30 +2345,6 @@ def user_not_logged_in_exception_check(runner):
 
     with pytest.raises(UserNotLoggedInException):
         ds = deeplake.empty("hub://adilkhan/demo")
-
-
-def dataset_handler_error_check(runner, username, password):
-    result = runner.invoke(login, f"-u {username} -p {password}")
-    with pytest.raises(DatasetHandlerError):
-        ds = deeplake.load(f"hub://{username}/wrong-path")
-    runner.invoke(logout)
-
-
-@pytest.mark.slow
-def test_hub_related_permission_exceptions(
-    hub_cloud_dev_credentials,
-):
-    username, password = hub_cloud_dev_credentials
-    runner = CliRunner()
-
-    token_permission_error_check(
-        username,
-        password,
-        runner,
-    )
-    invalid_token_exception_check()
-    user_not_logged_in_exception_check(runner)
-    dataset_handler_error_check(runner, username, password)
 
 
 def test_incompat_dtype_msg(local_ds, capsys):

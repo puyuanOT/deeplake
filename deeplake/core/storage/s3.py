@@ -1,5 +1,6 @@
 import deeplake
 from math import ceil
+from io import BytesIO
 import time
 import boto3
 import botocore  # type: ignore
@@ -8,6 +9,7 @@ from typing import Dict, Optional, Tuple, Type
 from datetime import datetime, timezone
 from botocore.session import ComponentLocator
 from deeplake.client.client import DeepLakeBackendClient
+from deeplake.constants import GB
 from deeplake.core.storage.provider import StorageProvider
 from deeplake.util.exceptions import (
     S3GetAccessError,
@@ -153,12 +155,16 @@ class S3Provider(StorageProvider):
         return sd
 
     def _set(self, path, content):
-        self.client.put_object(
-            Bucket=self.bucket,
-            Body=content,
-            Key=path,
-            ContentType="application/octet-stream",  # signifies binary data
-        )
+        if len(content) >= 1 * GB:
+            stream = BytesIO(content)
+            self.client.upload_fileobj(stream, self.bucket, path)
+        else:
+            self.client.put_object(
+                Bucket=self.bucket,
+                Body=content,
+                Key=path,
+                ContentType="application/octet-stream",  # signifies binary data
+            )
 
     def __setitem__(self, path, content):
         """Sets the object present at the path with the value
@@ -380,6 +386,12 @@ class S3Provider(StorageProvider):
         self._check_update_creds()
         yield from self._all_keys()
 
+    def _clear(self, prefix):
+        bucket = self.resource.Bucket(self.bucket)
+        for response in bucket.objects.filter(Prefix=prefix).delete():
+            if response["Errors"]:
+                raise S3DeletionError(response["Errors"][0]["Message"])
+
     def clear(self, prefix=""):
         """Deletes ALL data with keys having given prefix on the s3 bucket (under self.root).
 
@@ -391,12 +403,10 @@ class S3Provider(StorageProvider):
         path = posixpath.join(self.path, prefix) if prefix else self.path
         if self.resource is not None:
             try:
-                bucket = self.resource.Bucket(self.bucket)
-                bucket.objects.filter(Prefix=path).delete()
+                self._clear(path)
             except Exception as err:
                 with S3ResetReloadCredentialsManager(self, S3DeletionError):
-                    bucket = self.resource.Bucket(self.bucket)
-                    bucket.objects.filter(Prefix=self.path).delete()
+                    self._clear(path)
 
         else:
             super().clear()
@@ -687,7 +697,7 @@ class S3Provider(StorageProvider):
             raise S3SetError(err) from err
 
     def get_items(self, keys):
-        with ThreadPoolExecutor(max_workers=8) as executor:
+        with ThreadPoolExecutor() as executor:
             future_to_key = {
                 executor.submit(self.__getitem__, key): key for key in keys
             }

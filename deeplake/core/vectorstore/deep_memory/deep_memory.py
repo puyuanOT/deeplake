@@ -4,14 +4,14 @@ import uuid
 from collections import defaultdict
 from pydantic import BaseModel, ValidationError
 from typing import Any, Dict, Optional, List, Union, Callable, Tuple
+from functools import wraps
 from time import time
 
 import numpy as np
 
 import deeplake
 from deeplake.util.exceptions import (
-    DeepMemoryWaitingListError,
-    DeepMemoryWaitingListError,
+    DeepMemoryAccessError,
     IncorrectRelevanceTypeError,
     IncorrectQueriesTypeError,
 )
@@ -33,16 +33,22 @@ from deeplake.util.bugout_reporter import (
 from deeplake.util.path import get_path_type
 
 
+DEEP_MEMORY_MODEL = "model.npy"
+RECALL = "recall@10"
+
+
 def access_control(func):
+    @wraps(func)
     def wrapper(self, *args, **kwargs):
         if self.client is None:
-            raise DeepMemoryWaitingListError()
+            raise DeepMemoryAccessError()
         return func(self, *args, **kwargs)
 
     return wrapper
 
 
 def use_deep_memory(func):
+    @wraps(func)
     def wrapper(self, *args, **kwargs):
         use_deep_memory = kwargs.get("deep_memory")
         distance_metric = kwargs.get("distance_metric")
@@ -85,7 +91,7 @@ class DeepMemory:
         token: Optional[str] = None,
         creds: Optional[Union[Dict, str]] = None,
     ):
-        """Based Deep Memory class to train and evaluate models on DeepMemory managed service.
+        """Base Deep Memory class to train and evaluate models on DeepMemory managed service.
 
         Args:
             dataset (Dataset): deeplake dataset object or path.
@@ -303,7 +309,7 @@ class DeepMemory:
 
             recall = "{:.2f}".format(100 * recall)
             improvement = "{:.2f}".format(100 * improvement)
-        except:
+        except Exception:
             recall = None
             improvement = None
         self.client.check_status(job_id=job_id, recall=recall, improvement=improvement)
@@ -357,7 +363,7 @@ class DeepMemory:
                 )
                 recall = "{:.2f}".format(100 * recall)
                 delta = "{:.2f}".format(100 * delta)
-            except:
+            except Exception:
                 recall = None
                 delta = None
 
@@ -383,42 +389,43 @@ class DeepMemory:
         Evaluate a model using the DeepMemory managed service.
 
         Examples:
-            # 1. Evaluate a model using an embedding function:
-            relevance = [[("doc_id_1", 1), ("doc_id_2", 1)], [("doc_id_3", 1)]]
-            queries = ["What is the capital of India?", "What is the capital of France?"]
-            embedding_function = openai_embedding.embed_documents
-            vectorstore.deep_memory.evaluate(
-                relevance=relevance,
-                queries=queries,
-                embedding_function=embedding_function,
-            )
 
-            # 2. Evaluate a model with precomputed embeddings:
-            embeddings = [[-1.2, 12, ...], ...]
-            vectorstore.deep_memory.evaluate(
-                relevance=relevance,
-                queries=queries,
-                embedding=embeddings,
-            )
+            >>> # 1. Evaluate a model using an embedding function:
+            >>> relevance = [[("doc_id_1", 1), ("doc_id_2", 1)], [("doc_id_3", 1)]]
+            >>> queries = ["What is the capital of India?", "What is the capital of France?"]
+            >>> embedding_function = openai_embedding.embed_documents
+            >>> vectorstore.deep_memory.evaluate(
+            ...     relevance=relevance,
+            ...     queries=queries,
+            ...     embedding_function=embedding_function,
+            ... )
 
-            # 3. Evaluate a model with precomputed embeddings and log queries:
-            vectorstore.deep_memory.evaluate(
-                relevance=relevance,
-                queries=queries,
-                embedding=embeddings,
-                qvs_params={"log_queries": True},
-            )
+            >>> # 2. Evaluate a model with precomputed embeddings:
+            >>> embeddings = [[-1.2, 12, ...], ...]
+            >>> vectorstore.deep_memory.evaluate(
+            ...     relevance=relevance,
+            ...     queries=queries,
+            ...     embedding=embeddings,
+            >>> )
 
-            # 4. Evaluate with precomputed embeddings, log queries, and a custom branch:
-            vectorstore.deep_memory.evaluate(
-                relevance=relevance,
-                queries=queries,
-                embedding=embeddings,
-                qvs_params={
-                    "log_queries": True,
-                    "branch": "queries",
-                }
-            )
+            >>> # 3. Evaluate a model with precomputed embeddings and log queries:
+            >>> vectorstore.deep_memory.evaluate(
+            ...     relevance=relevance,
+            ...     queries=queries,
+            ...     embedding=embeddings,
+            ...     qvs_params={"log_queries": True},
+            ... )
+
+            >>> # 4. Evaluate with precomputed embeddings, log queries, and a custom branch:
+            >>> vectorstore.deep_memory.evaluate(
+            ...     relevance=relevance,
+            ...     queries=queries,
+            ...     embedding=embeddings,
+            ...     qvs_params={
+            ...         "log_queries": True,
+            ...         "branch": "queries",
+            ...     }
+            ... )
 
         Args:
             queries (List[str]): Queries for model evaluation.
@@ -551,7 +558,7 @@ class DeepMemory:
     @access_control
     def get_model(self):
         """Get the name of the model currently being used by DeepMemory managed service."""
-        return self.dataset.embedding.info["deepmemory"]["model.npy"]["job_id"]
+        return self.dataset.embedding.info["deepmemory"][DEEP_MEMORY_MODEL]["job_id"]
 
     @access_control
     def set_model(self, model_name: str):
@@ -583,7 +590,7 @@ class DeepMemory:
         # get old deepmemory dictionary and update it:
         old_deepmemory = self.dataset.embedding.info["deepmemory"]
         new_deepmemory = old_deepmemory.copy()
-        new_deepmemory.update({"model.npy": new_model_npy})
+        new_deepmemory.update({DEEP_MEMORY_MODEL: new_model_npy})
 
         # assign new deepmemory dictionary to the dataset:
         self.dataset.embedding.info["deepmemory"] = new_deepmemory
@@ -717,12 +724,18 @@ def _get_best_model(embedding: Any, job_id: str, latest_job: bool = False):
     best_recall = 0
     best_delta = 0
     if latest_job:
-        best_recall = info["deepmemory/model.npy"]["recall@10"]
-        best_delta = info["deepmemory/model.npy"]["delta"]
+        try:
+            best_recall = info["deepmemory"][DEEP_MEMORY_MODEL][RECALL]
+            best_delta = info["deepmemory"][DEEP_MEMORY_MODEL]["delta"]
+        except:
+            best_recall = info["deepmemory/model.npy"][RECALL]
+            best_delta = info["deepmemory/model.npy"]["delta"]
+        finally:
+            pass
 
     for job, value in info.items():
         if job_id in job:
-            recall = value["recall@10"]
+            recall = value[RECALL]
             delta = value["delta"]
             if delta > best_delta:
                 best_recall = recall

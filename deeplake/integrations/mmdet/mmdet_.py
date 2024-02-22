@@ -167,7 +167,6 @@ And config for training:
 >>> mmdet_deeplake.train_detector(model, cfg, distributed=args.distributed, validate=args.validate)
 """
 
-
 from collections import OrderedDict
 
 from typing import Callable, Optional, List, Dict
@@ -215,6 +214,7 @@ import warnings
 from collections import OrderedDict
 import mmcv  # type: ignore
 from mmcv.runner import init_dist  # type: ignore
+
 import torch
 import numpy as np
 from mmcv.utils import print_log
