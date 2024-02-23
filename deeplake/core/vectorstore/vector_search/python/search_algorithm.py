@@ -18,12 +18,21 @@ def batch_cosine_similarity(query, embeddings, batch_size=100000):
     """Calculate cosine similarity in batches to reduce memory usage."""
     num_embeddings = embeddings.shape[0]
     cos_similarities = np.zeros(num_embeddings)
-    from tqdm import tqdm
-    for i in tqdm(range(0, num_embeddings, batch_size)):
+    for i in range(0, num_embeddings, batch_size):
         batch = embeddings[i:i + batch_size]
         cos_similarities[i:i + batch_size] = np.dot(batch, query.T) / (
                 np.linalg.norm(query) * np.linalg.norm(batch, axis=1))
     return cos_similarities
+
+
+def batch_inner_product(query, embeddings, batch_size=10000):
+    """Calculate inner product in batches."""
+    num_embeddings = embeddings.shape[0]
+    inner_products = np.zeros(num_embeddings)
+    for i in range(0, num_embeddings, batch_size):
+        batch = embeddings[i:i + batch_size]
+        inner_products[i:i + batch_size] = np.dot(batch, query.T)
+    return inner_products
 
 
 def search(
@@ -42,10 +51,12 @@ def search(
     # Use the appropriate distance calculation
     if distance_metric == "cos":
         distances = batch_cosine_similarity(query_embedding, embeddings)
+    elif distance_metric == "inner":
+        distances = batch_inner_product(query_embedding, embeddings)
     else:
         distances = distance_metric_map[distance_metric](query_embedding, embeddings)
     
-    if distance_metric in ["cos"]:
+    if distance_metric in ["cos", "inner"]:  # Assuming higher values are better for both
         nearest_indices = np.argsort(distances)[::-1][:k]
     else:
         nearest_indices = np.argsort(distances)[:k]
