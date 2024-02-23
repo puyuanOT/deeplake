@@ -24,6 +24,9 @@ def vector_search(
     org_id,
     return_tql,
 ) -> Union[Dict, DeepLakeDataset]:
+    
+    recursive_retrieval = os.getenv('recursive_retrieval', 'True').lower() in ['false', '0']
+    
     if query is not None:
         raise NotImplementedError(
             f"User-specified TQL queries are not supported for exec_option={exec_option} "
@@ -39,14 +42,11 @@ def vector_search(
     # Use a unique key for caching. Here, it's simple but can be extended to be more sophisticated
     cache_key = "no_filter" if filter is None else str(filter)
 
-    print(embeddings.shape)
-    raise NotImplementedError
-
     return_data = {}
 
     # Only fetch embeddings and run the search algorithm if an embedding query is specified
     if query_emb is not None:
-        if cache_key in EMBEDDINGS_CACHE:
+        if recursive_retrieval and cache_key in EMBEDDINGS_CACHE:
             embeddings = EMBEDDINGS_CACHE[cache_key]
         else:
             embeddings = dataset_utils.fetch_embeddings(
