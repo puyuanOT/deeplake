@@ -4,6 +4,7 @@ from deeplake.core.vectorstore.vector_search import filter as filter_utils
 from deeplake.core.vectorstore.vector_search import utils
 from deeplake.core.dataset import Dataset as DeepLakeDataset
 from typing import Union, Dict
+import os
 import time
 
 EMBEDDINGS_CACHE = {}
