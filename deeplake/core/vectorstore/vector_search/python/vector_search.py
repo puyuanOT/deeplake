@@ -39,6 +39,9 @@ def vector_search(
     # Use a unique key for caching. Here, it's simple but can be extended to be more sophisticated
     cache_key = "no_filter" if filter is None else str(filter)
 
+    print(embeddings.shape)
+    raise NotImplementedError
+
     return_data = {}
 
     # Only fetch embeddings and run the search algorithm if an embedding query is specified
