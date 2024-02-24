@@ -18,8 +18,7 @@ def batch_cosine_similarity(query, embeddings, batch_size=100000):
     """Calculate cosine similarity in batches to reduce memory usage."""
     num_embeddings = embeddings.shape[0]
     cos_similarities = np.zeros(num_embeddings)
-    from tqdm import tqdm
-    for i in tqdm(range(0, num_embeddings, batch_size)):
+    for i in range(0, num_embeddings, batch_size):
         batch = embeddings[i:i + batch_size]
         cos_similarities[i:i + batch_size] = np.dot(batch, query.T) / (
                 np.linalg.norm(query) * np.linalg.norm(batch, axis=1))
