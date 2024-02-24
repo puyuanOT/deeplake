@@ -47,7 +47,6 @@ def vector_search(
 
     # Only fetch embeddings and run the search algorithm if an embedding query is specified
     if query_emb is not None:
-        start_time = time.time()
         if recursive_retrieval and cache_key in EMBEDDINGS_CACHE:
             embeddings = EMBEDDINGS_CACHE[cache_key]
         else:
@@ -58,8 +57,6 @@ def vector_search(
             # Cache the embeddings for future use
             EMBEDDINGS_CACHE[cache_key] = embeddings
 
-        print("Loading tooks", time.time() - start_time)
-        start_time = time.time()
         view, scores = vectorstore.python_search_algorithm(
             deeplake_dataset=view,
             query_embedding=query_emb,
@@ -67,19 +64,16 @@ def vector_search(
             distance_metric=distance_metric.lower(),
             k=k,
         )
-        print("Computing tooks", time.time() - start_time)
 
         return_data["score"] = scores
 
     if return_view:
         return view
     else:
-        start_time = time.time()
         for tensor in return_tensors:
             if tensor == "embedding":
                 return_data[tensor] = None  # Skip embedding to save time
                 continue
 
             return_data[tensor] = utils.parse_tensor_return(view[tensor])
-        print("Return tooks", time.time() - start_time)
         return return_data

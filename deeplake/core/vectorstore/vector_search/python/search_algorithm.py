@@ -43,7 +43,6 @@ def search(
     distance_metric: str = "l2",
     k: int = 4,
 ) -> Tuple[DeepLakeDataset, List]:
-    print(distance_metric)
     if embeddings.shape[0] == 0:
         return deeplake_dataset[0:0], []
 
