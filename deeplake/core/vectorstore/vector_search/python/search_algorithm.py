@@ -18,7 +18,8 @@ def batch_cosine_similarity(query, embeddings, batch_size=100000):
     """Calculate cosine similarity in batches to reduce memory usage."""
     num_embeddings = embeddings.shape[0]
     cos_similarities = np.zeros(num_embeddings)
-    for i in range(0, num_embeddings, batch_size):
+    from tqdm import tqdm
+    for i in tqdm(range(0, num_embeddings, batch_size)):
         batch = embeddings[i:i + batch_size]
         cos_similarities[i:i + batch_size] = np.dot(batch, query.T) / (
                 np.linalg.norm(query) * np.linalg.norm(batch, axis=1))
@@ -42,6 +43,7 @@ def search(
     distance_metric: str = "l2",
     k: int = 4,
 ) -> Tuple[DeepLakeDataset, List]:
+    print(distance_metric)
     if embeddings.shape[0] == 0:
         return deeplake_dataset[0:0], []
 
