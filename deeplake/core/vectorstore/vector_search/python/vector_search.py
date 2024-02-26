@@ -23,7 +23,8 @@ def fetch_embeddings_in_batches(view, embedding_tensor, batch_size=100*1000):
     # Create an empty matrix of float16 to save memory
     all_embeddings = np.empty((num_items, embedding_size), dtype=np.float16)
     
-    for start_idx in range(0, num_items, batch_size):
+    from tqdm import tqdm
+    for start_idx in tqdm(range(0, num_items, batch_size)):
         end_idx = min(start_idx + batch_size, num_items)
         # Load batch embeddings
         batch_embeddings = dataset_utils.fetch_embeddings(
@@ -74,14 +75,15 @@ def vector_search(
 
     # Only fetch embeddings and run the search algorithm if an embedding query is specified
     if query_emb is not None:
-        start_time = time.time()
         if recursive_retrieval and cache_key in EMBEDDINGS_CACHE:
             embeddings = EMBEDDINGS_CACHE[cache_key]
         else:
             embeddings = fetch_embeddings_in_batches(view, embedding_tensor, batch_size=10000)
             # Cache the embeddings for future use
             EMBEDDINGS_CACHE[cache_key] = embeddings
-       
+        
+        #start_time = time.time()
+        #print("Start comput")
         view, scores = vectorstore.python_search_algorithm(
             deeplake_dataset=view,
             query_embedding=query_emb,
@@ -89,6 +91,7 @@ def vector_search(
             distance_metric=distance_metric.lower(),
             k=k,
         )
+        #print("Comput took", time.time() - start_time)
 
         return_data["score"] = scores
 

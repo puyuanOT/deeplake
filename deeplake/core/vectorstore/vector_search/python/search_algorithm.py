@@ -1,8 +1,9 @@
 from typing import List, Tuple
 from deeplake.core.dataset import Dataset as DeepLakeDataset
-
+import torch
 import numpy as np
 import time
+from tqdm import tqdm
 
 
 distance_metric_map = {
@@ -25,13 +26,21 @@ def batch_cosine_similarity(query, embeddings, batch_size=100000):
     return cos_similarities
 
 
-def batch_inner_product(query, embeddings, batch_size=100000):
-    """Calculate inner product in batches."""
+def batch_inner_product(query, embeddings, batch_size=500000):
+    """Calculate inner product in batches using PyTorch and fp16, with batch conversion."""
+    # Convert query to PyTorch tensor of fp16 outside the loop since it's reused
+    query = torch.tensor(query, dtype=torch.float32).unsqueeze(1)  # Ensure query is 2D for mm
+
     num_embeddings = embeddings.shape[0]
-    inner_products = np.zeros(num_embeddings)
+    # Initialize the result array in numpy to save on memory
+    inner_products = np.zeros(num_embeddings, dtype=np.float32)
+
     for i in range(0, num_embeddings, batch_size):
-        batch = embeddings[i:i + batch_size]
-        inner_products[i:i + batch_size] = np.dot(batch, query.T)
+        # Convert each batch to PyTorch tensor of fp16 within the loop
+        batch = torch.tensor(embeddings[i:i + batch_size], dtype=torch.float32)
+        # Perform matrix multiplication and convert the result to numpy in fp32
+        inner_products[i:i + batch_size] = torch.mm(batch, query).squeeze().numpy()
+
     return inner_products
 
 
