@@ -23,8 +23,8 @@ def fetch_embeddings_in_batches(view, embedding_tensor, batch_size=100*1000):
     # Create an empty matrix of float16 to save memory
     all_embeddings = np.empty((num_items, embedding_size), dtype=np.float16)
     
-    from tqdm import tqdm
-    for start_idx in tqdm(range(0, num_items, batch_size)):
+    #from tqdm import tqdm
+    for start_idx in range(0, num_items, batch_size):
         end_idx = min(start_idx + batch_size, num_items)
         # Load batch embeddings
         batch_embeddings = dataset_utils.fetch_embeddings(
