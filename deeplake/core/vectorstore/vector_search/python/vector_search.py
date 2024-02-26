@@ -9,6 +9,33 @@ import time
 
 EMBEDDINGS_CACHE = {}
 
+import numpy as np
+
+def fetch_embeddings_in_batches(view, embedding_tensor, batch_size=100*1000):
+    # Fetch one sample to determine the embedding size
+    sample_embedding = dataset_utils.fetch_embeddings(
+        view=view[0:1],
+        embedding_tensor=embedding_tensor,
+    )
+    embedding_size = sample_embedding.shape[1]
+    num_items = len(view)
+    
+    # Create an empty matrix of float16 to save memory
+    all_embeddings = np.empty((num_items, embedding_size), dtype=np.float16)
+    
+    for start_idx in range(0, num_items, batch_size):
+        end_idx = min(start_idx + batch_size, num_items)
+        # Load batch embeddings
+        batch_embeddings = dataset_utils.fetch_embeddings(
+            view=view[start_idx:end_idx],
+            embedding_tensor=embedding_tensor,
+        )
+        # Convert to fp16 and store in the preallocated matrix
+        all_embeddings[start_idx:end_idx] = batch_embeddings.astype(np.float16)
+    
+    return all_embeddings
+
+
 def vector_search(
     query,
     query_emb,
@@ -47,16 +74,14 @@ def vector_search(
 
     # Only fetch embeddings and run the search algorithm if an embedding query is specified
     if query_emb is not None:
+        start_time = time.time()
         if recursive_retrieval and cache_key in EMBEDDINGS_CACHE:
             embeddings = EMBEDDINGS_CACHE[cache_key]
         else:
-            embeddings = dataset_utils.fetch_embeddings(
-                view=view,
-                embedding_tensor=embedding_tensor,
-            )
+            embeddings = fetch_embeddings_in_batches(view, embedding_tensor, batch_size=10000)
             # Cache the embeddings for future use
             EMBEDDINGS_CACHE[cache_key] = embeddings
-
+       
         view, scores = vectorstore.python_search_algorithm(
             deeplake_dataset=view,
             query_embedding=query_emb,
