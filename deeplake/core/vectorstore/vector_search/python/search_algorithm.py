@@ -25,7 +25,7 @@ def batch_cosine_similarity(query, embeddings, batch_size=100000):
     return cos_similarities
 
 
-def batch_inner_product(query, embeddings, batch_size=10000):
+def batch_inner_product(query, embeddings, batch_size=100000):
     """Calculate inner product in batches."""
     num_embeddings = embeddings.shape[0]
     inner_products = np.zeros(num_embeddings)
